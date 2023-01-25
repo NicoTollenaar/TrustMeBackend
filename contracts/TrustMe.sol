@@ -152,12 +152,14 @@ contract TrustMe is AutomationCompatibleInterface {
 		emit TradeAccepted(seller, msg.sender);
 	}
 
-	event TokensWithdrawn(address indexed seller, uint tradeIndex);
+	event TokensWithdrawn(address indexed seller, uint indexTrade);
 
-	function withdrawTokens(address seller, uint indexTrade) public {
-		Trade storage trade = userToTrades[seller][indexTrade];
-		IERC20(trade.tokenToSell).safeTransfer(seller, trade.amountOfTokenToSell);
-		emit TokensWithdrawn(msg.sender, 1234);
+	function withdrawTokens(address seller, uint _indexTrade) public {
+		Trade storage trade = userToTrades[seller][_indexTrade];
+		IERC20 token = IERC20(trade.tokenToSell);
+		require(token.balanceOf(address(this)) == trade.amountOfTokenToSell);
+		token.safeTransfer(seller, trade.amountOfTokenToSell);
+		emit TokensWithdrawn(msg.sender, _indexTrade);
 	}
 
 	/***********
@@ -181,28 +183,44 @@ contract TrustMe is AutomationCompatibleInterface {
 	 ************************/
 
 	function checkUpkeep(bytes calldata checkData) external view returns (bool upkeepNeeded, bytes memory performData) {
-		(bool hasExpired, address seller, int indexTrade) = checkExpiredTrades();
-		return (hasExpired, abi.encode(seller, indexTrade));
+		(bool somethingExpired, bytes memory expiredTradesPlusCountInBytes) = getExpiredTrades();
+		return (somethingExpired, expiredTradesPlusCountInBytes);
 	}
 
 	function performUpkeep(bytes calldata performData) external override {
-		(address seller, int256 index) = abi.decode(performData, (address, int256));
-		Trade storage trade = userToTrades[seller][uint(index)];
-		IERC20 token = IERC20(trade.tokenToSell);
-		require(trade.deadline < block.timestamp);
-		trade.status = TradeStatus.Expired;
-		removePendingTrade(trade);
-		require(token.balanceOf(address(this)) == trade.amountOfTokenToSell);
-		withdrawTokens(seller, uint(index));
+		Trade[] memory expiredTrades = abi.decode(performData, (Trade[]));
+		uint indexTrade;
+		for (uint i = 0; i < expiredTrades.length; i++) {
+			require(expiredTrades[i].deadline < block.timestamp);
+			indexTrade = uint(getIndexUserToTrades(expiredTrades[i]));
+			removePendingTrade(expiredTrades[i]);
+			changeStatusToExpired(expiredTrades[i].seller, indexTrade);
+			withdrawTokens(expiredTrades[i].seller, indexTrade); //delete this line if seller is to withdraw manually
+		}
 	}
 
-	function checkExpiredTrades() internal view returns (bool, address, int) {
+	event TradeExpired(address indexed seller, uint indexed indexTrade);
+
+	function changeStatusToExpired(address _seller, uint _indexTrade) internal {
+		Trade storage trade = userToTrades[_seller][_indexTrade];
+		trade.status == TradeStatus.Expired;
+		emit TradeExpired(_seller, _indexTrade);
+	}
+
+	function getExpiredTrades() internal view returns (bool, bytes memory) {
+		uint counter;
 		for (uint i = 0; i < pendingTrades.length; i++) {
 			if (block.timestamp > pendingTrades[i].deadline) {
-				return (true, pendingTrades[i].seller, getIndexUserToTrades(pendingTrades[i]));
+				counter++;
 			}
 		}
-		return (false, address(0), 0);
+		Trade[] memory expiredTrades = new Trade[](counter);
+		for (uint i = 0; i < pendingTrades.length; i++) {
+			if (block.timestamp > pendingTrades[i].deadline) {
+				expiredTrades[i] = pendingTrades[i];
+			}
+		}
+		return (counter != 0, abi.encode(expiredTrades));
 	}
 
 	function removePendingTrade(Trade memory _trade) internal {
