@@ -5,6 +5,9 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+// imported for ChainLink automation
+import "@chainlink/contracts/src/v0.8/AutomationCompatible.sol";
+
 error InvalidAddress();
 error CannotTradeSameToken();
 error CannotTradeWithSelf();
@@ -16,7 +19,7 @@ error TradeIsNotPending();
 error TradeIsExpired();
 error InsufficientAllowance();
 
-contract TrustMe {
+contract TrustMe is AutomationCompatibleInterface {
 	// Events
 	event TradeCreated(
 		address indexed seller,
@@ -52,8 +55,11 @@ contract TrustMe {
 		uint256 deadline;
 		TradeStatus status;
 	}
-	mapping(address => Trade[]) public userToTrades;
+	mapping(address => Trade[]) public userToTrades; // would it be better to call this sellerToTrades? There is no mapping for buyers
 	mapping(address => mapping(address => uint256)) public userToTokenToAmount;
+
+	// variable added for ChainLink automation
+	Trade[] pendingTrades;
 
 	modifier onlyValidTrade(
 		address _buyer,
@@ -119,6 +125,7 @@ contract TrustMe {
 
 		userToTrades[msg.sender].push(trade);
 		userToTokenToAmount[msg.sender][_tokenToSell] = _amountOfTokenToSell;
+		pendingTrades.push(trade);
 
 		emit TradeCreated(
 			msg.sender,
@@ -137,10 +144,20 @@ contract TrustMe {
 		IERC20(trade.tokenToBuy).safeTransferFrom(msg.sender, trade.seller, trade.amountOfTokenToBuy);
 		// Transfer token to buyer from contract
 		IERC20(trade.tokenToSell).safeTransfer(trade.buyer, trade.amountOfTokenToSell);
+		//function call added for ChainLink Automation
+		removePendingTrade(trade);
 		trade.status = TradeStatus.Accepted;
 
 		userToTokenToAmount[seller][trade.tokenToSell] = 0;
 		emit TradeAccepted(seller, msg.sender);
+	}
+
+	event TokensWithdrawn(address indexed seller, uint tradeIndex);
+
+	function withdrawTokens(address seller, uint indexTrade) public {
+		Trade storage trade = userToTrades[seller][indexTrade];
+		IERC20(trade.tokenToSell).safeTransfer(seller, trade.amountOfTokenToSell);
+		emit TokensWithdrawn(msg.sender, 1234);
 	}
 
 	/***********
@@ -157,5 +174,73 @@ contract TrustMe {
 
 	function getLatestTrade(address userAddress) external view returns (uint256) {
 		return userToTrades[userAddress].length - 1;
+	}
+
+	/************************
+	 * CHAINLINK AUTOMATION *
+	 ************************/
+
+	function checkUpkeep(
+		bytes calldata checkData
+	) external override returns (bool upkeepNeeded, bytes memory performData) {
+		(address seller, uint indexTrade) = checkExpiredTrades();
+		return (true, abi.encode(seller, indexTrade));
+	}
+
+	function performUpkeep(bytes calldata performData) external override {
+		(address seller, uint256 index) = abi.decode(performData, (address, uint256));
+		Trade memory trade = userToTrades[seller][index];
+		IERC20 token = IERC20(trade.tokenToSell);
+		require(trade.deadline < block.timestamp);
+		require(trade.status == TradeStatus.Expired);
+		require(token.balanceOf(address(this)) == trade.amountOfTokenToSell);
+		withdrawTokens(seller, index);
+	}
+
+	function checkExpiredTrades() internal returns (address, uint) {
+		for (uint i = 0; i < pendingTrades.length; i++) {
+			if (block.timestamp > pendingTrades[i].deadline) {
+				removePendingTrade(pendingTrades[i]);
+				Trade storage trade = userToTrades[pendingTrades[i].seller][(getIndexUserToTrades(pendingTrades[i]))];
+
+				trade.status = TradeStatus.Expired;
+				return (pendingTrades[i].seller, getIndexUserToTrades(pendingTrades[i]));
+			}
+		}
+	}
+
+	function removePendingTrade(Trade memory _trade) internal {
+		uint index;
+		for (uint i = 0; i < pendingTrades.length; i++) {
+			if (
+				pendingTrades[i].seller == _trade.seller &&
+				pendingTrades[i].buyer == _trade.buyer &&
+				pendingTrades[i].tokenToSell == _trade.tokenToSell &&
+				pendingTrades[i].tokenToBuy == _trade.tokenToBuy &&
+				pendingTrades[i].amountOfTokenToSell == _trade.amountOfTokenToSell &&
+				pendingTrades[i].amountOfTokenToBuy == _trade.amountOfTokenToBuy &&
+				pendingTrades[i].deadline == _trade.deadline &&
+				pendingTrades[i].status == _trade.status
+			) index = i;
+		}
+		pendingTrades[pendingTrades.length - 1] = pendingTrades[index];
+		pendingTrades.pop();
+	}
+
+	function getIndexUserToTrades(Trade memory _trade) internal returns (uint) {
+		uint index;
+		for (uint i = 0; i < userToTrades[_trade.seller].length; i++) {
+			Trade memory trade = userToTrades[_trade.seller][i];
+			if (
+				trade.seller == _trade.seller &&
+				trade.buyer == _trade.buyer &&
+				trade.tokenToSell == _trade.tokenToSell &&
+				trade.tokenToBuy == _trade.tokenToBuy &&
+				trade.amountOfTokenToSell == _trade.amountOfTokenToSell &&
+				trade.amountOfTokenToBuy == _trade.amountOfTokenToBuy &&
+				trade.deadline == _trade.deadline &&
+				trade.status == _trade.status
+			) return i;
+		}
 	}
 }
