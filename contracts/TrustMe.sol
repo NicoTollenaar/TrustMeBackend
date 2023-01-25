@@ -180,33 +180,29 @@ contract TrustMe is AutomationCompatibleInterface {
 	 * CHAINLINK AUTOMATION *
 	 ************************/
 
-	function checkUpkeep(
-		bytes calldata checkData
-	) external override returns (bool upkeepNeeded, bytes memory performData) {
-		(address seller, uint indexTrade) = checkExpiredTrades();
-		return (true, abi.encode(seller, indexTrade));
+	function checkUpkeep(bytes calldata checkData) external view returns (bool upkeepNeeded, bytes memory performData) {
+		(bool hasExpired, address seller, int indexTrade) = checkExpiredTrades();
+		return (hasExpired, abi.encode(seller, indexTrade));
 	}
 
 	function performUpkeep(bytes calldata performData) external override {
-		(address seller, uint256 index) = abi.decode(performData, (address, uint256));
-		Trade memory trade = userToTrades[seller][index];
+		(address seller, int256 index) = abi.decode(performData, (address, int256));
+		Trade storage trade = userToTrades[seller][uint(index)];
 		IERC20 token = IERC20(trade.tokenToSell);
 		require(trade.deadline < block.timestamp);
-		require(trade.status == TradeStatus.Expired);
+		trade.status = TradeStatus.Expired;
+		removePendingTrade(trade);
 		require(token.balanceOf(address(this)) == trade.amountOfTokenToSell);
-		withdrawTokens(seller, index);
+		withdrawTokens(seller, uint(index));
 	}
 
-	function checkExpiredTrades() internal returns (address, uint) {
+	function checkExpiredTrades() internal view returns (bool, address, int) {
 		for (uint i = 0; i < pendingTrades.length; i++) {
 			if (block.timestamp > pendingTrades[i].deadline) {
-				removePendingTrade(pendingTrades[i]);
-				Trade storage trade = userToTrades[pendingTrades[i].seller][(getIndexUserToTrades(pendingTrades[i]))];
-
-				trade.status = TradeStatus.Expired;
-				return (pendingTrades[i].seller, getIndexUserToTrades(pendingTrades[i]));
+				return (true, pendingTrades[i].seller, getIndexUserToTrades(pendingTrades[i]));
 			}
 		}
+		return (false, address(0), 0);
 	}
 
 	function removePendingTrade(Trade memory _trade) internal {
@@ -227,8 +223,7 @@ contract TrustMe is AutomationCompatibleInterface {
 		pendingTrades.pop();
 	}
 
-	function getIndexUserToTrades(Trade memory _trade) internal returns (uint) {
-		uint index;
+	function getIndexUserToTrades(Trade memory _trade) internal view returns (int) {
 		for (uint i = 0; i < userToTrades[_trade.seller].length; i++) {
 			Trade memory trade = userToTrades[_trade.seller][i];
 			if (
@@ -240,7 +235,8 @@ contract TrustMe is AutomationCompatibleInterface {
 				trade.amountOfTokenToBuy == _trade.amountOfTokenToBuy &&
 				trade.deadline == _trade.deadline &&
 				trade.status == _trade.status
-			) return i;
+			) return int(i);
 		}
+		return -1;
 	}
 }
