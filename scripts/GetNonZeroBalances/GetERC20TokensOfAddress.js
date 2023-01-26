@@ -3,7 +3,7 @@
 const { Network, Alchemy } = require("alchemy-sdk");
 require("dotenv").config();
 
-// Optional Config object, but defaults to demo api-key and eth-mainnet.
+// Optional Config object
 const settings = {
     apiKey: `${process.env.ALCHEMY_API_KEY_MAINNET}`, // Replace with your Alchemy API Key.
     network: Network.ETH_MAINNET, // Replace with your network.
@@ -19,7 +19,6 @@ async function getERC20BalancesForAddress() {
     console.log("fetching ERC20 balances for address:", ownerAddr);
     console.log("...");
 
-// Print total NFT count returned in the response:
 const response = await alchemy.core.getTokenBalances(ownerAddr);
 
 console.log("response:", response);
