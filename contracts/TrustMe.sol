@@ -52,6 +52,17 @@ contract TrustMe is AutomationCompatible {
 		TradeStatus status;
 	}
 
+	struct TransactionInput {
+		address buyer;
+		address tokenToSell;
+		address tokenToBuy;
+		uint256 amountOfETHToSell;
+		uint256 amountOfTokenToSell;
+		uint256 amountOfETHToBuy;
+		uint256 amountOfTokenToBuy;
+		uint256 tradePeriod;
+	}
+
 	/**********************
 	 *  STATE VARIABLES *
 	 **********************/
@@ -66,17 +77,7 @@ contract TrustMe is AutomationCompatible {
 	/**********
 	 * EVENTS *
 	 **********/
-	event TradeCreated(
-		address indexed seller,
-		address indexed buyer,
-		address tokenToSell,
-		address tokenToBuy,
-		uint256 amountOfETHToSell,
-		uint256 amountOfTokenToSell,
-		uint256 amountOfETHToBuy,
-		uint256 amountOfTokenToBuy,
-		uint deadline
-	);
+	event TradeCreated(uint256 indexed tradeId);
 	event TradeConfirmed(address indexed seller, address indexed buyer);
 	event TradeExpired(address indexed seller, address indexed buyer);
 	event TradeCanceled(address indexed seller, address indexed buyer, address tokenToSell, address tokenToBuy);
@@ -151,96 +152,54 @@ contract TrustMe is AutomationCompatible {
 
 	/**
 	 *@dev  Create Trade to initialize a trade as a seller
-	 *@param _buyer address of the buyer
-	 *@param _tokenToSell address of the token to sell
-	 *@param _tokenToBuy address of the token to buy
-	 *@param _amountOfETHToSell amount of ETH to sell
-	 *@param _amountOfTokenToSell amount of token to sell
-	 *@param _amountOfETHToBuy amount of ETH to buy
-	 *@param _amountOfTokenToBuy amount of token to buy
-	 *@param  _tradePeriod duration of trade
+	 *@param transactionInput - struct with transaction input
 	 */
 
 	// NT: should we leave the option open to sell both tokens and ETH or require that it must be either one or the other but not both - see my above remark.
 
 	function addTrade(
-		address _buyer,
-		address _tokenToSell,
-		address _tokenToBuy,
-		uint256 _amountOfETHToSell,
-		uint256 _amountOfTokenToSell,
-		uint256 _amountOfETHToBuy,
-		uint256 _amountOfTokenToBuy,
-		uint256 _tradePeriod
+		TransactionInput calldata transactionInput
 	)
 		external
 		payable
 		validateAddTrade(
-			_buyer,
-			_tokenToSell,
-			_tokenToBuy,
-			_amountOfETHToSell,
-			_amountOfTokenToSell,
-			_amountOfETHToBuy,
-			_amountOfTokenToBuy
+			transactionInput.buyer,
+			transactionInput.tokenToSell,
+			transactionInput.tokenToBuy,
+			transactionInput.amountOfETHToSell,
+			transactionInput.amountOfTokenToSell,
+			transactionInput.amountOfETHToBuy,
+			transactionInput.amountOfTokenToBuy
 		)
 	{
-		uint tradePeriod = block.timestamp + _tradePeriod;
-		IERC20 token = IERC20(_tokenToSell);
+		uint tradePeriod = block.timestamp + transactionInput.tradePeriod;
+		IERC20 token = IERC20(transactionInput.tokenToSell);
 
-		if (_amountOfTokenToSell > 0) token.safeTransferFrom(msg.sender, address(this), _amountOfTokenToSell);
+		if (transactionInput.amountOfTokenToSell > 0)
+			token.safeTransferFrom(msg.sender, address(this), transactionInput.amountOfTokenToSell);
 
 		// NT: is it necessary to keep track of sellers ETH in the contract (it certainly feels "safer") and, if so, do we need to do the same for seller's tokens? See also comment above.
 
 		sellerToETHBalances[msg.sender] += msg.value;
 
-		// The piece of code below (initializing the trade struct)
-		//  is throwing a "stack too deep" compilation error
-		// I tried to fix this using a suggestion offered in this article
-		// but it not working yet: https://soliditydeveloper.com/stacktoodeep
-
-		// ***********************************************************88
-
 		Trade memory trade = Trade(
 			msg.sender,
-			_buyer,
-			_tokenToSell,
-			_tokenToBuy,
-			0,
-			0,
-			0,
-			0,
-			0,
+			transactionInput.buyer,
+			transactionInput.tokenToSell,
+			transactionInput.tokenToBuy,
+			transactionInput.amountOfETHToSell,
+			transactionInput.amountOfTokenToSell,
+			transactionInput.amountOfETHToBuy,
+			transactionInput.amountOfTokenToBuy,
+			tradePeriod,
 			false,
 			TradeStatus.Pending
 		);
 
-		{
-			trade.amountOfETHToSell = _amountOfETHToSell;
-			trade.amountOfTokenToSell = _amountOfTokenToSell;
-			trade.amountOfETHToBuy = _amountOfETHToBuy;
-			trade.amountOfTokenToBuy = _amountOfTokenToBuy;
-			trade.deadline = _tradePeriod;
-			trade.isAvailableToWithdraw = false;
-			trade.status = TradeStatus.Pending;
-		}
-
-		// ***************************************************
-
 		userToTrades[msg.sender].push(trade);
 		sellerAddresses.push(msg.sender);
 
-		emit TradeCreated(
-			msg.sender,
-			_buyer,
-			_tokenToSell,
-			_tokenToBuy,
-			_amountOfETHToSell,
-			_amountOfTokenToSell,
-			_amountOfETHToBuy,
-			_amountOfTokenToBuy,
-			tradePeriod
-		);
+		emit TradeCreated(0);
 	}
 
 	function confirmTrade(address seller, uint256 index) external payable validateCloseTrade(seller, index) {

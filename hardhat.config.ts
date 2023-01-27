@@ -1,12 +1,12 @@
-import {HardhatUserConfig} from 'hardhat/config';
+import { HardhatUserConfig } from 'hardhat/config';
 import '@nomicfoundation/hardhat-toolbox';
 import 'hardhat-contract-sizer';
 import 'hardhat-deploy';
-import {NetworkUserConfig} from 'hardhat/types';
+import { NetworkUserConfig } from 'hardhat/types';
 
-import {config as dotenvConfig} from 'dotenv';
-import {resolve} from 'path';
-dotenvConfig({path: resolve(__dirname, './.env')});
+import { config as dotenvConfig } from 'dotenv';
+import { resolve } from 'path';
+dotenvConfig({ path: resolve(__dirname, './.env') });
 
 const chainIds = {
 	mainnet: 1,

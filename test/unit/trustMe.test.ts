@@ -1,11 +1,11 @@
-import {SignerWithAddress} from '@nomiclabs/hardhat-ethers/signers';
-import {expect} from 'chai';
-import {Signer} from 'ethers';
-import {formatEther, id, parseEther} from 'ethers/lib/utils';
-import {deployments, ethers} from 'hardhat';
-import {BuyerToken, SellerToken, TrustMe} from '../../typechain';
-import {time} from '@nomicfoundation/hardhat-network-helpers';
-import {log} from 'console';
+import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
+import { expect } from 'chai';
+import { Signer } from 'ethers';
+import { formatEther, id, parseEther } from 'ethers/lib/utils';
+import { deployments, ethers } from 'hardhat';
+import { BuyerToken, SellerToken, TrustMe } from '../../typechain';
+import { time } from '@nomicfoundation/hardhat-network-helpers';
+import { log } from 'console';
 describe('TrustMe', () => {
 	let signers: SignerWithAddress[];
 	let trustMe: TrustMe;
@@ -300,7 +300,7 @@ describe('TrustMe', () => {
 				);
 			await ethers.provider.send('evm_increaseTime', [601]);
 			await ethers.provider.send('evm_mine', []);
-			const {upkeepNeeded} = await trustMe.callStatic.checkUpkeep('0x');
+			const { upkeepNeeded } = await trustMe.callStatic.checkUpkeep('0x');
 			expect(upkeepNeeded).to.be.true;
 		});
 		it('Should return upkeepNeeded as false if time has not passed', async () => {
@@ -315,7 +315,7 @@ describe('TrustMe', () => {
 					parseEther('100'),
 					600
 				);
-			const {upkeepNeeded} = await trustMe.callStatic.checkUpkeep('0x');
+			const { upkeepNeeded } = await trustMe.callStatic.checkUpkeep('0x');
 			expect(upkeepNeeded).to.be.false;
 		});
 	});
