@@ -193,6 +193,14 @@ contract TrustMe is AutomationCompatible {
 		// NT: is it necessary to keep track of sellers ETH in the contract (it certainly feels "safer") and, if so, do we need to do the same for seller's tokens? See also comment above.
 
 		sellerToETHBalances[msg.sender] += msg.value;
+
+		// The piece of code below (initializing the trade struct)
+		//  is throwing a "stack too deep" compilation error
+		// I tried to fix this using a suggestion offered in this article
+		// but it not working yet: https://soliditydeveloper.com/stacktoodeep
+
+		// ***********************************************************88
+
 		Trade memory trade = Trade(
 			msg.sender,
 			_buyer,
@@ -216,6 +224,8 @@ contract TrustMe is AutomationCompatible {
 			trade.isAvailableToWithdraw = false;
 			trade.status = TradeStatus.Pending;
 		}
+
+		// ***************************************************
 
 		userToTrades[msg.sender].push(trade);
 		sellerAddresses.push(msg.sender);
